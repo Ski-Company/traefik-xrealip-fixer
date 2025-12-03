@@ -13,12 +13,24 @@ import (
 
 // ServeHTTP is the middleware entrypoint.
 func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	trustResult := ipFinder.trust(req.RemoteAddr, req)
+	socketIP := helper.ParseSocketIP(req.RemoteAddr)
+	hasCFHeader := req.Header.Get(cloudflare.ClientIPHeaderName) != ""
+	hasCFNHeader := req.Header.Get(cloudfront.ClientIPHeaderName) != ""
+	hasProviderHeader := hasCFHeader || hasCFNHeader
 
-	if trustResult.isFatal {
-		http.Error(rw, "Unknown source", http.StatusInternalServerError)
+	// Fast-path: no provider hints present -> treat as direct connection
+	if !hasProviderHeader {
+		helper.CleanInboundForwardingHeaders(req.Header)
+		req.Header.Set(helper.XRealipFixerTrusted, "yes")
+		req.Header.Set(helper.XRealipFixerProvider, "direct")
+		helper.AppendXFF(req.Header, socketIP)
+		req.Header.Set(helper.XRealIP, socketIP)
+		ipFinder.next.ServeHTTP(rw, req)
 		return
 	}
+
+	trustResult := ipFinder.trust(req.RemoteAddr, req)
+
 	if trustResult.isError {
 		http.Error(rw, "Unknown source", http.StatusBadRequest)
 		return
@@ -29,8 +41,6 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	helper.CleanInboundForwardingHeaders(req.Header)
-
-	socketIP := helper.ParseSocketIP(req.RemoteAddr)
 	matched := providers.Unknown
 	if ipFinder.ipInProvider(providers.Cloudflare, socketIP) {
 		matched = providers.Cloudflare

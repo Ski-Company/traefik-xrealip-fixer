@@ -5,7 +5,7 @@ http:
         xrealip-fixer:
           provider: auto
           autoRefresh: true
-          refreshInterval: 12h
+          refreshInterval: 1m
           debug: true
 
   routers:

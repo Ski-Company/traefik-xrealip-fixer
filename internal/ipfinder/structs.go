@@ -24,7 +24,6 @@ type Ipfinder struct {
 
 // TrustResult for Trust IP test result.
 type TrustResult struct {
-	isFatal  bool
 	isError  bool
 	trusted  bool
 	directIP string
