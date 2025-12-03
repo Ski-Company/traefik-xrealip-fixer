@@ -1,0 +1,21 @@
+log:
+  level: DEBUG
+
+entryPoints:
+  web:
+    address: ":80"
+
+api:
+  dashboard: true
+  insecure: true
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+experimental:
+  # Enable the local plugin using the module name as in README
+  localPlugins:
+    xrealip-fixer:
+      moduleName: github.com/ski-company/traefik-xrealip-fixer

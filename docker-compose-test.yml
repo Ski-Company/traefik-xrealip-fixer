@@ -1,0 +1,31 @@
+services:
+  traefik:
+    image: traefik:v3.6.2
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"     # http
+      - "8080:8080" # traefik dashboard (api)
+    volumes:
+      - ./traefik-test/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik-test/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      # Mount the plugin source into Traefik's local plugins path (readme recommended path)
+      - ./:/plugins-local/src/github.com/ski-company/traefik-xrealip-fixer:ro
+    networks:
+      - proxy
+
+  whoami:
+    image: traefik/whoami
+    container_name: whoami
+    restart: unless-stopped
+    expose:
+      - "80"
+    environment:
+      - WHOAMI_NAME=whoami
+      - WHOAMI_PORT_NUMBER=80
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    driver: bridge

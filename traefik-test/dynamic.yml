@@ -1,0 +1,24 @@
+http:
+  middlewares:
+    xrealip-fixer:
+      plugin:
+        xrealip-fixer:
+          provider: auto
+          autoRefresh: true
+          refreshInterval: 12h
+          debug: true
+
+  routers:
+    whoami-router:
+      rule: Host(`whoami.local`)
+      entryPoints:
+        - web
+      service: whoami-svc
+      middlewares:
+        - xrealip-fixer
+
+  services:
+    whoami-svc:
+      loadBalancer:
+        servers:
+          - url: "http://whoami:80"
