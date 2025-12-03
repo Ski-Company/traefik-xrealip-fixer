@@ -41,7 +41,7 @@ func New(ctx context.Context, next http.Handler, cfg *config.Config, name string
 	if err := ipFinder.refreshProvidersIPS(); err != nil {
 		logger.LogWarn("initial providers IPS refresh load had issues", "error", err.Error(), "middleware", name)
 	} else {
-		cfCIDRsQty, cfnCIDRsQty := ipFinder.counts()
+		cfCIDRsQty, cfnCIDRsQty := ipFinder.cidrCounts()
 		logger.LogInfo("providers IPS loaded", "cloudflare", fmt.Sprintf("%d", cfCIDRsQty), "cloudfront", fmt.Sprintf("%d", cfnCIDRsQty), "middleware", name)
 	}
 

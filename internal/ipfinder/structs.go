@@ -15,6 +15,8 @@ type Ipfinder struct {
 	provider           providers.Provider
 	TrustIP            map[providers.Provider][]*net.IPNet
 	clientIPHeaderName string
+	cfCIDRsQty         int
+	cfnCIDRsQty        int
 
 	mu        sync.RWMutex        // guards TrustIP
 	userTrust map[string][]string // keep user-supplied CIDRs for merges on refresh

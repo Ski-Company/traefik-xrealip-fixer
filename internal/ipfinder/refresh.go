@@ -10,7 +10,6 @@ import (
 
 	"github.com/ski-company/traefik-xrealip-fixer/internal/logger"
 	"github.com/ski-company/traefik-xrealip-fixer/internal/providers"
-	"github.com/ski-company/traefik-xrealip-fixer/internal/providers/auto"
 	"github.com/ski-company/traefik-xrealip-fixer/internal/providers/cloudflare"
 	"github.com/ski-company/traefik-xrealip-fixer/internal/providers/cloudfront"
 )
@@ -29,7 +28,7 @@ func (ipFinder *Ipfinder) refreshProvidersIPSLoop(ctx context.Context, interval 
 			if err := ipFinder.refreshProvidersIPS(); err != nil {
 				logger.LogWarn("periodic providers IPS refresh failed", "error", err.Error())
 			} else {
-				cfCIDRsQty, cfnCIDRsQty := ipFinder.counts()
+				cfCIDRsQty, cfnCIDRsQty := ipFinder.cidrCounts()
 				logger.LogInfo("providers IPS refreshed", "cloudflare", fmt.Sprintf("%d", cfCIDRsQty), "cloudfront", fmt.Sprintf("%d", cfnCIDRsQty))
 			}
 			t.Reset(interval)
@@ -39,14 +38,22 @@ func (ipFinder *Ipfinder) refreshProvidersIPSLoop(ctx context.Context, interval 
 
 // refreshProvidersIPS fetches defaults + merges user-supplied CIDRs, then swaps atomically.
 func (ipFinder *Ipfinder) refreshProvidersIPS() error {
-	var autoCIDRs, cfCIDRs, cfnCIDRs []string
+	var cfCIDRs, cfnCIDRs []string
 	switch ipFinder.provider {
 	case providers.Auto:
-		autoCIDRs = auto.TrustedIPS()
+		cfCIDRs = cloudflare.TrustedIPS()
+		cfnCIDRs = cloudfront.TrustedIPS()
 	case providers.Cloudflare:
-		cfCIDRs  = cloudflare.TrustedIPS()
+		cfCIDRs = cloudflare.TrustedIPS()
 	case providers.Cloudfront:
 		cfnCIDRs = cloudfront.TrustedIPS()
+	}
+
+	if list, ok := ipFinder.userTrust[providers.Cloudflare.String()]; ok {
+		cfCIDRs = append(cfCIDRs, list...)
+	}
+	if list, ok := ipFinder.userTrust[providers.Cloudfront.String()]; ok {
+		cfnCIDRs = append(cfnCIDRs, list...)
 	}
 
 	newMap := make(map[providers.Provider][]*net.IPNet)
@@ -64,37 +71,26 @@ func (ipFinder *Ipfinder) refreshProvidersIPS() error {
 		}
 	}
 
-	if len(autoCIDRs) > 0 {
-		add(providers.Auto, autoCIDRs)
-	} else {
-		if len(cfCIDRs) > 0 {
-			add(providers.Cloudflare, cfCIDRs)
-		}
-		if len(cfnCIDRs) > 0 {
-			add(providers.Cloudfront, cfnCIDRs)
-		}
+	if len(cfCIDRs) > 0 {
+		add(providers.Cloudflare, cfCIDRs)
+	}
+	if len(cfnCIDRs) > 0 {
+		add(providers.Cloudfront, cfnCIDRs)
 	}
 
 	ipFinder.mu.Lock()
 	ipFinder.TrustIP = newMap
+	ipFinder.cfCIDRsQty = len(newMap[providers.Cloudflare])
+	ipFinder.cfnCIDRsQty = len(newMap[providers.Cloudfront])
 	ipFinder.mu.Unlock()
 
 	return nil
 }
 
-// counts the number of CIDRs loaded per provider.
-func (ipFinder *Ipfinder) counts() (cfCIDRsQty, cfnCIDRsQty int) {
-	ipFinder.mu.RLock()
-	defer ipFinder.mu.RUnlock()
-	cfCIDRsQty = len(ipFinder.TrustIP[providers.Cloudflare])
-	cfnCIDRsQty = len(ipFinder.TrustIP[providers.Cloudfront])
-	return
-}
-
 // helper: membership check with lock
-func (ipFinder *Ipfinder) contains(prov providers.Provider, ip net.IP) bool {
+func (ipFinder *Ipfinder) contains(provider providers.Provider, ip net.IP) bool {
 	ipFinder.mu.RLock()
-	nets := ipFinder.TrustIP[prov]
+	nets := ipFinder.TrustIP[provider]
 	ipFinder.mu.RUnlock()
 	for _, n := range nets {
 		if n.Contains(ip) {
@@ -131,4 +127,11 @@ func (ipFinder *Ipfinder) trust(remote string, _ *http.Request) *TrustResult {
 		}
 	}
 	return &TrustResult{trusted: false, directIP: ip.String()}
+}
+
+// cidrCounts returns the last refresh counts (thread-safe).
+func (ipFinder *Ipfinder) cidrCounts() (cfCIDRsQty, cfnCIDRsQty int) {
+	ipFinder.mu.RLock()
+	defer ipFinder.mu.RUnlock()
+	return ipFinder.cfCIDRsQty, ipFinder.cfnCIDRsQty
 }
