@@ -3,7 +3,6 @@ http:
     xrealip-fixer:
       plugin:
         xrealip-fixer:
-          provider: auto
           autoRefresh: true
           refreshInterval: 1m
           debug: true

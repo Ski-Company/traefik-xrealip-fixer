@@ -17,26 +17,17 @@ func New(ctx context.Context, next http.Handler, cfg *config.Config, name string
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
-	if cfg.Provider == "" {
-		return nil, fmt.Errorf("no provider has been defined")
-	}
 
 	logger.EnableDebug(cfg.Debug)
-
-	provider := providers.Provider(cfg.Provider)
-	if err := provider.Validate(); err != nil {
-		return nil, fmt.Errorf("failed to validate provider %q: %w", cfg.Provider, err)
-	}
 
 	ipFinder := &Ipfinder{
 		next:      next,
 		name:      name,
-		provider:  provider,
 		TrustIP:   make(map[providers.Provider][]*net.IPNet),
 		userTrust: cfg.TrustIP,
 	}
 
-	logger.LogInfo("ipfinder initialized", "provider", provider.String())
+	logger.LogInfo("ipfinder initialized")
 
 	if err := ipFinder.refreshProvidersIPS(); err != nil {
 		logger.LogWarn("initial providers IPS refresh load had issues", "error", err.Error(), "middleware", name)

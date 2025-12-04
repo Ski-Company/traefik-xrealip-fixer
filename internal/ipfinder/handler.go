@@ -16,10 +16,17 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	socketIP := helper.ParseSocketIP(req.RemoteAddr)
 	hasCFHeader := req.Header.Get(cloudflare.ClientIPHeaderName) != ""
 	hasCFNHeader := req.Header.Get(cloudfront.ClientIPHeaderName) != ""
-	hasProviderHeader := hasCFHeader || hasCFNHeader
 
-	// Fast-path: no provider hints present -> treat as direct connection
-	if !hasProviderHeader {
+	// Step 1: detect provider from headers, otherwise direct path
+	matched := providers.Unknown
+	if hasCFHeader {
+		matched = providers.Cloudflare
+	} else if hasCFNHeader {
+		matched = providers.Cloudfront
+	}
+
+	// Fast-path direct: no provider hints at all
+	if matched == providers.Unknown {
 		helper.CleanInboundForwardingHeaders(req.Header)
 		req.Header.Set(helper.XRealipFixerTrusted, "yes")
 		req.Header.Set(helper.XRealipFixerProvider, "direct")
@@ -29,47 +36,24 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Check provider trust
-	trustResult := ipFinder.trust(req.RemoteAddr, req)
-	if trustResult.isError {
-		http.Error(rw, "Unknown source", http.StatusBadRequest)
-		return
-	}
-	if trustResult.hostIP == "" {
-		http.Error(rw, "Unknown source", http.StatusUnprocessableEntity)
-		return
-	}
-
 	helper.CleanInboundForwardingHeaders(req.Header)
-	matched := providers.Unknown
-	if ipFinder.ipInProvider(providers.Cloudflare, socketIP) {
-		matched = providers.Cloudflare
-	} else if ipFinder.ipInProvider(providers.Cloudfront, socketIP) {
-		matched = providers.Cloudfront
+
+	// Step 2: check socket IP matches the advertised provider
+	trusted := false
+	clientIPHeaderName := ""
+	switch matched {
+	case providers.Cloudflare:
+		trusted = ipFinder.contains(providers.Cloudflare, net.ParseIP(socketIP))
+		clientIPHeaderName = cloudflare.ClientIPHeaderName
+		req.Header.Set(helper.XRealipFixerProvider, "cloudflare")
+	case providers.Cloudfront:
+		trusted = ipFinder.contains(providers.Cloudfront, net.ParseIP(socketIP))
+		clientIPHeaderName = cloudfront.ClientIPHeaderName
+		req.Header.Set(helper.XRealipFixerProvider, "cloudfront")
 	}
 
-	if trustResult.trusted {
+	if trusted {
 		req.Header.Set(helper.XRealipFixerTrusted, "yes")
-		switch matched {
-		case providers.Cloudflare:
-			req.Header.Set(helper.XRealipFixerProvider, "cloudflare")
-		case providers.Cloudfront:
-			req.Header.Set(helper.XRealipFixerProvider, "cloudfront")
-		default:
-			req.Header.Set(helper.XRealipFixerProvider, "unknown")
-		}
-
-		var clientIPHeaderName string
-		switch ipFinder.provider {
-		case providers.Auto:
-			if matched == providers.Cloudflare && req.Header.Get(cloudflare.ClientIPHeaderName) != "" {
-				clientIPHeaderName = cloudflare.ClientIPHeaderName
-			} else if matched == providers.Cloudfront && req.Header.Get(cloudfront.ClientIPHeaderName) != "" {
-				clientIPHeaderName = cloudfront.ClientIPHeaderName
-			}
-		default:
-			clientIPHeaderName = ipFinder.clientIPHeaderName
-		}
 
 		var clientIP string
 		if clientIPHeaderName != "" {
@@ -79,41 +63,23 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 		}
 		if clientIP == "" {
-			clientIP = trustResult.hostIP
+			clientIP = socketIP
 		}
 
 		helper.AppendXFF(req.Header, clientIP)
 		req.Header.Set(helper.XRealIP, clientIP)
-
 	} else {
-		logger.LogInfo("Untrusted request from", "remote", socketIP)
+		logger.LogWarn("Untrusted request from", "remote", socketIP)
 		req.Header.Set(helper.XRealipFixerTrusted, "no")
 		req.Header.Set(helper.XRealipFixerProvider, "unknown")
 
-		switch ipFinder.provider {
-		case providers.Cloudflare, providers.Auto:
-			req.Header.Del(cloudflare.ClientIPHeaderName)
-		case providers.Cloudfront:
-			req.Header.Del(cloudfront.ClientIPHeaderName)
-		}
+		// Drop any spoofed provider headers on untrusted requests
+		req.Header.Del(cloudflare.ClientIPHeaderName)
+		req.Header.Del(cloudfront.ClientIPHeaderName)
 
-		useIP := trustResult.hostIP
-		if useIP == "" {
-			useIP = socketIP
-		}
-
-		helper.AppendXFF(req.Header, useIP)
-		req.Header.Set(helper.XRealIP, useIP)
+		http.Error(rw, "You didn't say the magic word", http.StatusGone)
+		return
 	}
 
 	ipFinder.next.ServeHTTP(rw, req)
-}
-
-// ipInProvider checks if ipStr is contained in a provider bucket (thread-safe).
-func (ipFinder *Ipfinder) ipInProvider(prov providers.Provider, ipStr string) bool {
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-	}
-	return ipFinder.contains(prov, ip)
 }
