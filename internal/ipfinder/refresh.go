@@ -115,18 +115,18 @@ func (ipFinder *Ipfinder) trust(remote string, _ *http.Request) *TrustResult {
 	switch ipFinder.provider {
 	case providers.Cloudflare:
 		if ipFinder.contains(providers.Cloudflare, ip) {
-			return &TrustResult{trusted: true, directIP: ip.String()}
+			return &TrustResult{trusted: true, hostIP: ip.String()}
 		}
 	case providers.Cloudfront:
 		if ipFinder.contains(providers.Cloudfront, ip) {
-			return &TrustResult{trusted: true, directIP: ip.String()}
+			return &TrustResult{trusted: true, hostIP: ip.String()}
 		}
 	case providers.Auto:
 		if ipFinder.contains(providers.Cloudflare, ip) || ipFinder.contains(providers.Cloudfront, ip) {
-			return &TrustResult{trusted: true, directIP: ip.String()}
+			return &TrustResult{trusted: true, hostIP: ip.String()}
 		}
 	}
-	return &TrustResult{trusted: false, directIP: ip.String()}
+	return &TrustResult{trusted: false, hostIP: ip.String()}
 }
 
 // cidrCounts returns the last refresh counts (thread-safe).

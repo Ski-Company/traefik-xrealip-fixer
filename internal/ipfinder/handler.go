@@ -29,13 +29,13 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Check provider trust
 	trustResult := ipFinder.trust(req.RemoteAddr, req)
-
 	if trustResult.isError {
 		http.Error(rw, "Unknown source", http.StatusBadRequest)
 		return
 	}
-	if trustResult.directIP == "" {
+	if trustResult.hostIP == "" {
 		http.Error(rw, "Unknown source", http.StatusUnprocessableEntity)
 		return
 	}
@@ -79,7 +79,7 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 		}
 		if clientIP == "" {
-			clientIP = trustResult.directIP
+			clientIP = trustResult.hostIP
 		}
 
 		helper.AppendXFF(req.Header, clientIP)
@@ -97,7 +97,7 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			req.Header.Del(cloudfront.ClientIPHeaderName)
 		}
 
-		useIP := trustResult.directIP
+		useIP := trustResult.hostIP
 		if useIP == "" {
 			useIP = socketIP
 		}

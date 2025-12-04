@@ -26,5 +26,5 @@ type Ipfinder struct {
 type TrustResult struct {
 	isError  bool
 	trusted  bool
-	directIP string
+	hostIP string
 }
