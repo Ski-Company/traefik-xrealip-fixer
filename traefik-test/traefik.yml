@@ -4,6 +4,8 @@ log:
 entryPoints:
   web:
     address: ":80"
+    forwardedHeaders:
+      insecure: true
 
 api:
   dashboard: true

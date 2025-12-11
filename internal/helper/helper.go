@@ -9,7 +9,7 @@ import (
 
 const (
 	XRealIP              = "X-Real-Ip"
-	XForwardFor          = "X-Forwarded-For"
+	XForwardedFor        = "X-Forwarded-For"
 	Forwarded            = "Forwarded"
 	XRealipFixerTrusted  = "X-Realip-Fixer-Trusted"
 	XRealipFixerProvider = "X-Realip-Fixer-Provider"
@@ -19,7 +19,7 @@ const (
 // We always set trusted values ourselves after validation.
 func CleanInboundForwardingHeaders(h http.Header) {
 	h.Del(XRealIP)
-	h.Del(XForwardFor)
+	h.Del(XForwardedFor)
 	h.Del(Forwarded)
 	h.Del(XRealipFixerTrusted)
 	h.Del(XRealipFixerProvider)
@@ -30,10 +30,10 @@ func AppendXFF(h http.Header, client string) {
 	if client == "" {
 		return
 	}
-	if prior := h.Get(XForwardFor); prior != "" {
-		h.Set(XForwardFor, prior+", "+client)
+	if prior := h.Get(XForwardedFor); prior != "" {
+		h.Set(XForwardedFor, prior+", "+client)
 	} else {
-		h.Set(XForwardFor, client)
+		h.Set(XForwardedFor, client)
 	}
 }
 

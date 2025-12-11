@@ -1,6 +1,7 @@
 package ipfinder
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -55,17 +56,24 @@ func detectProvider(req *http.Request) providers.Provider {
 
 // directClientIP walks X-Forwarded-For from the tail using configured depth, falling back to socket.
 func (ipFinder *Ipfinder) directClientIP(req *http.Request, socketIP string) string {
-	xff := req.Header.Get(helper.XForwardFor)
+	xff := req.Header.Get(helper.XForwardedFor)
+	logger.LogDebug("Direct path XFF:", "xff", xff)
 	if xff == "" || ipFinder.directDepth <= 0 {
+		logger.LogWarn("Direct path: no XFF or invalid directDepth; using socket IP", "socketIP", socketIP)
 		return socketIP
 	}
 	parts := strings.Split(xff, ",")
+	if ipFinder.directDepth > len(parts) {
+		logger.LogWarn("Direct path: directDepth exceeds XFF length; using socket IP", "socketIP", socketIP, "directDepth", fmt.Sprintf("%d", ipFinder.directDepth), "xffLen", fmt.Sprintf("%d", len(parts)))
+		return socketIP
+	}
 	for i := len(parts) - 1; i >= 0 && (len(parts)-1-i) < ipFinder.directDepth; i-- {
 		candidate := helper.ExtractClientIP(parts[i])
 		if net.ParseIP(candidate) != nil {
 			return candidate
 		}
 	}
+	logger.LogWarn("Direct path: no valid IP found in XFF; using socket IP", "socketIP", socketIP)
 	return socketIP
 }
 

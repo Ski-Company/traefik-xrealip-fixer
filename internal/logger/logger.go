@@ -22,20 +22,19 @@ func EnableDebug(on bool) {
 }
 
 // Public helpers (no-op unless debug is enabled)
-func LogInfo(msg string, kv ...string) {
+func LogDebug(msg string, kv ...string) {
 	if atomic.LoadUint32(&debugEnabled) == 1 {
-		logKV("INF", msg, kv...)
+		logKV("DBG", msg, kv...)
 	}
+}
+func LogInfo(msg string, kv ...string) {
+	logKV("INF", msg, kv...)
 }
 func LogWarn(msg string, kv ...string) {
-	if atomic.LoadUint32(&debugEnabled) == 1 {
-		logKV("WRN", msg, kv...)
-	}
+	logKV("WRN", msg, kv...)
 }
 func LogError(msg string, kv ...string) {
-	if atomic.LoadUint32(&debugEnabled) == 1 {
-		logKV("ERR", msg, kv...)
-	}
+	logKV("ERR", msg, kv...)
 }
 
 // Internal formatter: Traefik-like "TIMESTAMP LEVEL message k=v ... module=... plugin=..."
