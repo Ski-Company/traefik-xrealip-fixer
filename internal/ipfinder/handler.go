@@ -15,12 +15,13 @@ import (
 
 // ServeHTTP is the middleware entrypoint.
 func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	socketIP := helper.ParseSocketIP(req.RemoteAddr)
+	socketIPStr := helper.ParseSocketIP(req.RemoteAddr)
+	socketIP := net.ParseIP(socketIPStr)
 	matched := detectProvider(req)
 
 	// Step 1: direct path (no provider hints)
 	if matched == providers.Unknown {
-		clientIP := ipFinder.directClientIP(req, socketIP)
+		clientIP := ipFinder.directClientIP(req, socketIPStr)
 		helper.CleanInboundForwardingHeaders(req.Header)
 		ipFinder.applyTrusted(req, providers.Unknown, clientIP)
 		ipFinder.next.ServeHTTP(rw, req)
@@ -30,13 +31,13 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	helper.CleanInboundForwardingHeaders(req.Header)
 
 	// Step 2: validate socket IP belongs to advertised provider
-	if !ipFinder.isTrustedSocketIP(matched, socketIP) {
-		ipFinder.rejectUntrusted(rw, req, socketIP)
+	if socketIP == nil || !ipFinder.isTrustedSocketIP(matched, socketIP) {
+		ipFinder.rejectUntrusted(rw, req, socketIPStr)
 		return
 	}
 
 	// Step 3: resolve client IP from provider header (fallback to socket)
-	clientIP := ipFinder.resolveClientIP(matched, req, socketIP)
+	clientIP := ipFinder.resolveClientIP(matched, req, socketIPStr)
 	ipFinder.applyTrusted(req, matched, clientIP)
 
 	ipFinder.next.ServeHTTP(rw, req)
@@ -62,38 +63,45 @@ func (ipFinder *Ipfinder) directClientIP(req *http.Request, socketIP string) str
 		return socketIP
 	}
 
-	parts := strings.Split(xff, ",")
 	depth := ipFinder.directDepth
-	if depth > len(parts) {
+	seen := 0
+	start := len(xff)
+	for i := len(xff) - 1; i >= -1 && seen < depth; i-- {
+		if i == -1 || xff[i] == ',' {
+			token := strings.TrimSpace(xff[i+1 : start])
+			seen++
+			if token != "" {
+				if ip := helper.ExtractClientIP(token); net.ParseIP(ip) != nil {
+					return ip
+				}
+			}
+			start = i
+		}
+	}
+	// If depth requested more than available parts, or no valid IP found.
+	if seen < depth {
 		logger.LogWarn(
 			"Direct path: directDepth exceeds XFF length; using socket IP",
 			"socketIP", socketIP,
 			"directDepth", strconv.Itoa(depth),
-			"xffLen", strconv.Itoa(len(parts)),
+			"xffLen", strconv.Itoa(seen),
 		)
-		return socketIP
+	} else {
+		logger.LogWarn("Direct path: no valid IP found in XFF; using socket IP", "socketIP", socketIP)
 	}
-
-	for i := len(parts) - 1; i >= 0 && (len(parts)-1-i) < depth; i-- {
-		if ip := helper.ExtractClientIP(parts[i]); net.ParseIP(ip) != nil {
-			return ip
-		}
-	}
-	logger.LogWarn("Direct path: no valid IP found in XFF; using socket IP", "socketIP", socketIP)
 	return socketIP
 }
 
 // isTrustedSocketIP checks if the socket IP is inside the allowlist for the detected provider.
-func (ipFinder *Ipfinder) isTrustedSocketIP(provider providers.Provider, socketIP string) bool {
-	ip := net.ParseIP(socketIP)
-	if ip == nil {
+func (ipFinder *Ipfinder) isTrustedSocketIP(provider providers.Provider, socketIP net.IP) bool {
+	if socketIP == nil {
 		return false
 	}
 	switch provider {
 	case providers.Cloudflare:
-		return ipFinder.contains(providers.Cloudflare, ip)
+		return ipFinder.contains(providers.Cloudflare, socketIP)
 	case providers.Cloudfront:
-		return ipFinder.contains(providers.Cloudfront, ip)
+		return ipFinder.contains(providers.Cloudfront, socketIP)
 	default:
 		return false
 	}

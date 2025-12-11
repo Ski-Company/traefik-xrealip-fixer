@@ -26,6 +26,25 @@ services:
     networks:
       - proxy
 
+  k6:
+    image: grafana/k6:0.53.0
+    container_name: k6-benchmark
+    restart: no
+    profiles: ["bench"]
+    depends_on:
+      - traefik
+      - whoami
+    entrypoint: ["k6"]
+    command: ["run", "/scripts/k6-benchmark.js"]
+    volumes:
+      - ./traefik-test/k6-benchmark.js:/scripts/k6-benchmark.js:ro
+    environment:
+      - TARGET_URL=http://traefik/whoami
+      - VUS=20
+      - DURATION=30s
+    networks:
+      - proxy
+
 networks:
   proxy:
     driver: bridge
