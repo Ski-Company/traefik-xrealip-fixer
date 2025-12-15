@@ -1,8 +1,6 @@
-<p align="left">
-  <img src=".assets/traefik-xrealip-fixer-logo-transparent.png" alt="traefik-xrealip-fixer logo" width="220" />
-</p>
+![Traefik XRealIP Fixer Banner](https://raw.githubusercontent.com/ski-company/traefik-xrealip-fixer/master/.assets/traefik-xrealip-fixer-logo.png)
 
-# traefik-xrealip-fixer
+# Traefik XRealIP Fixer
 
 Traefik middleware that rebuilds a trustworthy client IP by inspecting:
 - Cloudflare / CloudFront headers,

@@ -1,7 +1,7 @@
 displayName: Traefik XRealIP Fixer
 type: middleware
 import: github.com/ski-company/traefik-xrealip-fixer
-iconPath: .assets/traefik-xrealip-fixer-logo-transparent.png
+iconPath: https://raw.githubusercontent.com/ski-company/traefik-xrealip-fixer/master/.assets/traefik-xrealip-fixer-logo-short-transparent.png
 summary: |
   Traefik XRealIP Fixer detects Cloudflare/CloudFront, validates the socket IP against their CIDRs,
   or follows a "direct" path with X-Forwarded-For (reverse scan, configurable depth).

@@ -1,8 +1,6 @@
-<p align="left">
-  <img src=".assets/traefik-xrealip-fixer-logo-transparent.png" alt="traefik-xrealip-fixer logo" width="220" />
-</p>
+![Traefik XRealIP Fixer Banner](https://raw.githubusercontent.com/ski-company/traefik-xrealip-fixer/master/.assets/traefik-xrealip-fixer-logo.png)
 
-# traefik-xrealip-fixer
+# Traefik XRealIP Fixer
 
 Middleware Traefik qui reconstruit l’IP client de façon fiable en fonction :
 - des en-têtes Cloudflare (CF-Connecting-IP) et CloudFront (Cloudfront-Viewer-Address),
