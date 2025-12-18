@@ -16,7 +16,6 @@ import (
 // ServeHTTP is the middleware entrypoint.
 func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	socketIPStr := helper.ParseSocketIP(req.RemoteAddr)
-	socketIP := net.ParseIP(socketIPStr)
 	matched := detectProvider(req)
 
 	// Step 1: direct path (no provider hints)
@@ -28,16 +27,19 @@ func (ipFinder *Ipfinder) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	providerEdgeIPStr := ipFinder.providerEdgeIP(req, socketIPStr)
+	providerEdgeIP := net.ParseIP(providerEdgeIPStr)
+
 	helper.CleanInboundForwardingHeaders(req.Header)
 
 	// Step 2: validate socket IP belongs to advertised provider
-	if socketIP == nil || !ipFinder.isTrustedSocketIP(matched, socketIP) {
-		ipFinder.rejectUntrusted(rw, req, socketIPStr)
+	if providerEdgeIP == nil || !ipFinder.isTrustedSocketIP(matched, providerEdgeIP) {
+		ipFinder.rejectUntrusted(rw, req, providerEdgeIPStr)
 		return
 	}
 
 	// Step 3: resolve client IP from provider header (fallback to socket)
-	clientIP := ipFinder.resolveClientIP(matched, req, socketIPStr)
+	clientIP := ipFinder.resolveClientIP(matched, req, providerEdgeIPStr)
 	ipFinder.applyTrusted(req, matched, clientIP)
 
 	ipFinder.next.ServeHTTP(rw, req)
@@ -64,32 +66,52 @@ func (ipFinder *Ipfinder) directClientIP(req *http.Request, socketIP string) str
 	}
 
 	depth := ipFinder.directDepth
-	seen := 0
+	if ip, ok, seen := ipFinder.scanXFFTail(xff, depth); ok {
+		return ip
+	} else {
+		if seen < depth {
+			logger.LogWarn(
+				"Direct path: directDepth exceeds XFF length; using socket IP",
+				"socketIP", socketIP,
+				"directDepth", strconv.Itoa(depth),
+				"xffLen", strconv.Itoa(seen),
+			)
+		} else {
+			logger.LogWarn("Direct path: no valid IP found in XFF; using socket IP", "socketIP", socketIP)
+		}
+		return socketIP
+	}
+}
+
+// providerEdgeIP picks the closest hop IP (tail of XFF) using directDepth, fallback to socket.
+func (ipFinder *Ipfinder) providerEdgeIP(req *http.Request, socketIP string) string {
+	xff := req.Header.Get(helper.XForwardedFor)
+	if ip, ok, _ := ipFinder.scanXFFTail(xff, ipFinder.directDepth); ok {
+		return ip
+	}
+	return socketIP
+}
+
+// scanXFFTail returns the last valid IP within the given depth from the end of XFF.
+// ok=false if none found; seen returns how many hops were inspected.
+func (ipFinder *Ipfinder) scanXFFTail(xff string, depth int) (ip string, ok bool, seen int) {
+	if xff == "" || depth <= 0 {
+		return "", false, 0
+	}
 	start := len(xff)
 	for i := len(xff) - 1; i >= -1 && seen < depth; i-- {
 		if i == -1 || xff[i] == ',' {
 			token := strings.TrimSpace(xff[i+1 : start])
 			seen++
 			if token != "" {
-				if ip := helper.ExtractClientIP(token); net.ParseIP(ip) != nil {
-					return ip
+				if candidate := helper.ExtractClientIP(token); net.ParseIP(candidate) != nil {
+					return candidate, true, seen
 				}
 			}
 			start = i
 		}
 	}
-	// If depth requested more than available parts, or no valid IP found.
-	if seen < depth {
-		logger.LogWarn(
-			"Direct path: directDepth exceeds XFF length; using socket IP",
-			"socketIP", socketIP,
-			"directDepth", strconv.Itoa(depth),
-			"xffLen", strconv.Itoa(seen),
-		)
-	} else {
-		logger.LogWarn("Direct path: no valid IP found in XFF; using socket IP", "socketIP", socketIP)
-	}
-	return socketIP
+	return "", false, seen
 }
 
 // isTrustedSocketIP checks if the socket IP is inside the allowlist for the detected provider.

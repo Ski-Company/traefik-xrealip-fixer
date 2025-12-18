@@ -11,7 +11,7 @@ Chaque requête est marquée via `X-Realip-Fixer-Trusted` (yes/no) et `X-Realip-
 
 ## Fonctionnement
 - Pas d’en-tête provider (CF/CFN) : chemin direct, on prend l’IP socket ou un hop XFF selon `directDepth`.
-- En-tête provider présent : on vérifie que l’IP socket appartient aux ranges Cloudflare/CloudFront (CIDRs rafraîchies périodiquement). Sinon 410 Gone.
+- En-tête provider présent : on valide l’IP « edge » depuis la fin du XFF (limité par `directDepth`) contre les CIDRs Cloudflare/CloudFront (rafraîchies périodiquement). On ne retombe sur l’IP socket que si aucun hop XFF valide, sinon 410 Gone.
 - On extrait l’IP client à partir du header provider, fallback IP socket si invalide, puis on réécrit XFF / X-Real-IP.
 
 ## Configuration du plugin (dynamic.yml)
